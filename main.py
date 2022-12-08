@@ -9,6 +9,12 @@ from __future__ import unicode_literals
 # now, though. Instead I think I'll just develop
 # the core language further.
 
+# Current Task: Macros
+# Info:
+# Can be either importable from another file or definable
+# in-context at the top of one.
+# Imported files use 
+
 from interpreter import run_file
 from sys import argv
 import config
