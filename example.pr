@@ -1,0 +1,97 @@
+// Here's a showcase of everything this language can do
+
+
+// -----------------------Builtins---------------------------
+// Print to the screen
+print("Hello World");
+
+// Print to the screen and take input
+numstr = input("Give me a number: ");
+
+// Convert to a number
+num = toint(numstr);
+
+// Convert to a string
+print("You chose "+tostring(num));
+
+// Choose a random number
+mynum = randint(0,50);
+
+// Get the type of a variable
+print("Mynum has the type "+typestr(mynum));
+
+// Get a range of numbers
+print(range(17));
+
+// Wait for a number of seconds
+sleep(5);
+
+// Clear the screen
+clear();
+
+
+// ---------------------Operators------------------------
+// Add, Subtract
+print(17+5-7);
+
+// Multiply, Divide
+print(2*3/4);
+print(2*3/4.0);
+
+// Boolean operators
+print((!true) == (false&&true) || (true!=false));
+
+// Equality/Inequality
+print((7==4) || (8!=9) || (4>5) || (7<=435));
+
+
+// --------------------Flow Control----------------------
+// If statement
+if (mynum < 25) {
+    print("I chose a number less than 25");
+}
+
+// While loop
+max = 50;
+while (mynum < max) {
+    print("My number is less than "+tostring(max));
+    max -= 1;
+}
+
+// For loop (operates like foreach, really)
+for i in (range(10)) {
+    print(tostring(i)+"...");
+    sleep(0.25);
+}
+
+
+// -------------------Other features------------------
+// Function
+func whee(times) {
+    for i in (range(times)) {
+        print("Whee!");
+    }
+}
+whee(18);
+print("Yes");
+whee(9);
+
+// Classes
+class ClassThing() {
+    func ClassThing(constructor_param) {
+        // This is how you do constructors
+        print("Constructin'");
+        print(constructor_param);
+        this.test = 18;
+    }
+    func foo(bar) {
+        return this.test+bar;
+    }
+}
+an_instance = ClassThing(32746);
+print(an_instance.foo(11));
+
+// Imports (See example_2 to find out what this does)
+import "example_2";
+rtn = example_2.functiony_thingy();
+print("The imported function returned "+tostring(rtn));

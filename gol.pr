@@ -1,0 +1,78 @@
+// It's the game board
+class Board() {
+    func Board(sx, sy) {
+        this.board = [];
+        for r in (range(sy)) {
+            this.board += [];
+            for c in (range(sx)) {
+                this.board[0-1] += randint(0,1);
+            }
+        }
+    }
+
+    func update() {
+        new_board = [];
+        for ir in (range(this.board.length)) {
+            new_board += [];
+            for ic in (range(this.board[ir].length)) {
+                neighbours = 0;
+                for y in (range(3)) {
+                    for x in (range(3)) {
+                        xp = ic+x-1;
+                        yp = ir+y-1;
+                        if (xp >= this.board[0].length || yp >= this.board.length)
+                            bsp = 0;
+                        else
+                            bsp = this.board [ir+y-1] [ic+x-1];
+                        if (xp < 0 || yp < 0)
+                            bsp = 0;
+                        sq_diff = y!=1 || x!=1;
+                        if (sq_diff && bsp == 1)
+                            neighbours += 1;
+                    }
+                }
+                new_board[0-1] += 0;
+                if (this.board[ir][ic] == 0 && neighbours == 3)
+                    new_board[0-1][0-1] = 1;
+                if (this.board[ir][ic] == 1 && neighbours < 4 && neighbours > 1)
+                    new_board[0-1][0-1] = 1;
+            }
+        }
+        this.board = new_board;
+    }
+}
+
+// It prints the board. What did you think it did?
+func print_board(board) {
+    for ln in (board) {
+        l_str = "";
+        for p in (ln) {
+            if (p==0)
+                l_str += "  ";
+            else
+                l_str += "# ";
+        }
+        print(l_str);
+    }
+}
+
+// Initialize
+b = Board(15, 15);
+
+// Announce the starting of the program
+print("Game Of Life");
+for i in (range(5)) {
+    print(tostring(5-i)+"...");
+    sleep(1);
+}
+clear();
+print("Begin!");
+print_board(b.board);
+
+// Main loop
+for i in (range(1000)) {
+    b.update();
+    print("---------------------------------");
+    print_board(b.board);
+    sleep(1);
+}

@@ -1,0 +1,6 @@
+func functiony_thingy() {
+    for i in (range(50)) {
+        print("AAAAAAAA");
+    }
+    return 5;
+}
