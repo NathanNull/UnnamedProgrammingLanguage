@@ -13,6 +13,7 @@ from pyfunc import PyFunc, PyModule, PyClass
 
 from lexer import Lexer
 from parser import Parser
+from macro_handler import MacroInterpreter
 
 import config
 import sys
@@ -240,11 +241,25 @@ def run_file(filepath:str):
     l = Lexer()
     p = Parser()
     i = Interpreter()
+    m = MacroInterpreter(Interpreter)
     try:
         with open(filepath) as file:
             text = file.read()
-        tokens = l.tokenize(text)
-        i_tokens = p.parse(tokens)
+
+        macros = []
+        code = []
+        in_macros = True
+        for line in text.split("\n"):
+            if not line.startswith("#"):
+                in_macros = True
+            if in_macros:
+                macros.append(line)
+            else:
+                code.append(line)
+            
+        tokens = l.tokenize(code.join("\n"))
+        macrofied = m.apply_macros(tokens)
+        i_tokens = p.parse(macrofied)
         if config.DEBUG_MODE:
             print(40*"-")
             print(",\nthen ".join(str(l) for l in i_tokens))

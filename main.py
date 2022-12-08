@@ -13,7 +13,11 @@ from __future__ import unicode_literals
 # Info:
 # Can be either importable from another file or definable
 # in-context at the top of one.
-# Imported files use 
+# Imported files use the .prm extension
+# Importing a macro file looks like
+# #importdefs "filepath-minus-extension"
+# Defining macros should be #define text :: replacement
+# Starting with the in-file macros
 
 from interpreter import run_file
 from sys import argv
