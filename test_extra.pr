@@ -1,0 +1,3 @@
+import "test_store";
+print(test_store.aaa);
+print(test_store.bbb);

@@ -1,2 +1,19 @@
-print(17 + - - -5);
-print(!true == false);
+#importdefs macros
+
+#define j 3
+//#undef j
+
+#define_multi whee
+print(1354);
+print(1354);
+print(1354);
+print(1354)
+#
+#funcdef_multi jj() :: whee
+
+
+#ifdef j
+print(aaa(1,2,3,4));
+#
+
+jj();

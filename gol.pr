@@ -70,9 +70,8 @@ print("Begin!");
 print_board(b.board);
 
 // Main loop
-for i in (range(1000)) {
+while (true) {
     b.update();
     print("---------------------------------");
     print_board(b.board);
-    sleep(1);
 }

@@ -13,7 +13,6 @@ from pyfunc import PyFunc, PyModule, PyClass
 
 from lexer import Lexer
 from parser import Parser
-from macro_handler import MacroInterpreter
 
 import config
 import sys
@@ -188,7 +187,7 @@ class Interpreter:
             return VNone(None)
                 
         elif isinstance(line, Return):
-            return self.run_stmt(line.stmt, ctx)
+            return [self.run_stmt(line.stmt, ctx)]
         elif isinstance(line, FuncDef):
             ctx[line.name] = Func(line.name, line, ctx)
         elif isinstance(line, FuncCall):
@@ -233,32 +232,28 @@ class Interpreter:
             ctx = self.globals
         for line in lines:
             rtn = self.run_line(line, ctx)
-            if rtn is not None and not isinstance(rtn, VNone):
-                return rtn
+            if isinstance(rtn, list): 
+                #only Return can make rtn be a list
+                #afaik
+                return rtn[0]
         return VNone(None)
 
+loaded_files = {}
+
 def run_file(filepath:str):
+
+    if filepath in loaded_files:
+        return loaded_files[filepath]
+    
     l = Lexer()
     p = Parser()
     i = Interpreter()
-    m = MacroInterpreter(Interpreter)
     try:
         with open(filepath) as file:
             text = file.read()
-
-        macros = []
-        code = []
-        in_macros = True
-        for line in text.split("\n"):
-            if not line.startswith("#"):
-                in_macros = True
-            if in_macros:
-                macros.append(line)
-            else:
-                code.append(line)
-            
-        tokens = l.tokenize(code.join("\n"))
-        macrofied = m.apply_macros(tokens)
+        
+        tokens = l.tokenize(text)
+        macrofied = l.apply_macros(tokens)
         i_tokens = p.parse(macrofied)
         if config.DEBUG_MODE:
             print(40*"-")
@@ -269,6 +264,11 @@ def run_file(filepath:str):
         except KeyboardInterrupt:
             print("\nCtrl-C pressed, exiting...")
             sys.exit(0)
-        return Module(filepath.split(".")[0], i.globals)
+
+        
+        module = Module(filepath.split(".")[0], i.globals)
+        loaded_files[filepath] = module
+        return module
+        
     except FileNotFoundError as e:
         raise ImportError("File not found") from e

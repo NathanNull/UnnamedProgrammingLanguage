@@ -1,23 +1,10 @@
 from __future__ import unicode_literals
-# IT IS FINISHED (well, kinda)
-# It's currently technically usable
 
-# Right, so the python import thing is wayy more
-# complicated than I was expecting. It'd probably
-# be easier in something like C# that actually
-# has proper typing built in. Too far in to stop
-# now, though. Instead I think I'll just develop
-# the core language further.
+# IT IS FINISHED(ish)
 
-# Current Task: Macros
-# Info:
-# Can be either importable from another file or definable
-# in-context at the top of one.
-# Imported files use the .prm extension
-# Importing a macro file looks like
-# #importdefs "filepath-minus-extension"
-# Defining macros should be #define text :: replacement
-# Starting with the in-file macros
+# TODO:
+# more imports
+# iter?
 
 from interpreter import run_file
 from sys import argv
@@ -28,4 +15,4 @@ if len(argv) >= 2:
         print(f"Running file {argv[1]}")
     run_file(argv[1])
 else:
-    run_file("example.pr")
+    run_file("test.pr")

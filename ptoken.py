@@ -49,6 +49,14 @@ class StringLiteral(Token):
     def __str__(self):
         return self.quote+self.string+self.quote
 
+class HashDef(Token):
+    def __str__(self):
+        return '#'
+
+class DoubleColon(Token):
+    def __str__(self):
+        return '::'
+
 class ArgSep(Token):
     def __str__(self):
         return "ARGSEP"

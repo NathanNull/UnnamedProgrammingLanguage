@@ -1,0 +1,3 @@
+#define whh "aeiou"
+
+#funcdef whee () :: print(whh)

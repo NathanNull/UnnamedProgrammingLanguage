@@ -18,7 +18,7 @@ print("You chose "+tostring(num));
 mynum = randint(0,50);
 
 // Get the type of a variable
-print("Mynum has the type "+typestr(mynum));
+print("Mynum has this type:\n"+typestr(mynum));
 
 // Get a range of numbers
 print(range(17));
@@ -95,3 +95,31 @@ print(an_instance.foo(11));
 import "example_2";
 rtn = example_2.functiony_thingy();
 print("The imported function returned "+tostring(rtn));
+
+// Macros (#define, #define_multi and #importdefs)
+#define aaa print("aaa");
+aaa
+aaa
+aaa
+
+#define_multi wawawa
+print("hey");
+print("aaaaaaaaaaaaaaaaaaaaaa");
+print
+// Unfinished lines are completely fine as long
+// as you finish them later
+#
+wawawa(1245);
+
+#importdefs example_3
+whee();
+
+#ifdef whh
+print("a");
+#
+
+#undef whh
+
+#ifdef whh
+print("a");
+#
