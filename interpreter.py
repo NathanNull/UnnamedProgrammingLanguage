@@ -8,20 +8,21 @@ from errors import ProgramSyntaxError, InvalidValueType,\
     Expected, ImportError
 from ptypes import Value, Bool, Array, VNone, Module,\
     Func, Class, ClassInstance, Context, Ctx, to_val
-from pbuiltins import builtins
-from pyfunc import PyFunc, PyModule, PyClass
+import pbuiltins, pytopr
+from pyfunc import PyFunc
 
 from lexer import Lexer
 from parser import Parser
+import saveparsed
 
 import config
 import sys
 
+builtins = pytopr.make_importable(pbuiltins)
+
 class Interpreter:
     def __init__(self):
-        self.globals = Ctx()
-        for k, v in builtins.items():
-            self.globals[k] = v
+        self.globals = Ctx(builtins.props)
         self.last_line = (None, True)
         self.this_module = Module("__main__", self.globals)
 
@@ -44,10 +45,13 @@ class Interpreter:
             return ci
 
         val_args = [target] + [self.run_stmt(a[0], ctx) for a in args.vals if a]
-        if any(isinstance(target, cls) for cls in (Module, PyModule, Context)):
+        if any(isinstance(target, cls) for cls in (Module, Context)):
             val_args.pop(0)
 
-        f_ctx = Ctx(rfunc.ctx)
+        return self.run_fn_raw(real_func, val_args, rfunc.ctx)
+
+    def run_fn_raw(self, real_func, val_args, ctx):
+        f_ctx = Ctx(ctx)
         for a, name in zip(val_args, real_func.params):
             f_ctx[name[0].name] = a
 
@@ -60,7 +64,7 @@ class Interpreter:
     
     def run_stmt(self, i_token, ctx):
         curr_tk = i_token
-        while not (isinstance(curr_tk, Value) or type(curr_tk) in [PyClass, PyModule]):
+        while not isinstance(curr_tk, Value):
             if isinstance(curr_tk, Var):
                 curr_tk = ctx[curr_tk.name]
             elif isinstance(curr_tk, FuncCall):
@@ -106,7 +110,7 @@ class Interpreter:
                     curr_tk = to_val(curr_tk)
             else:
                 print(type(curr_tk))
-                raise ProgramSyntaxError(f"Unsure what to do with this {curr_tk}<-{i_token}")
+                raise ProgramSyntaxError(f"Unsure what to do with this non-value token: {curr_tk} from {i_token}")
         return curr_tk
 
     def run_line(self, line, ctx):
@@ -195,6 +199,7 @@ class Interpreter:
                 else self.run_stmt(line.target, ctx)
             self.run_fn(line.fname, line.params, ctx, target)
         elif isinstance(line, ClassDef):
+            ops = {}
             props = {}
             constructor = None
             for subline in line.section.lines:
@@ -202,7 +207,17 @@ class Interpreter:
                     if subline.name == line.name:
                         constructor = Func(subline.name, subline, ctx)
                         constructor.params.insert(0, [Var("this")])
-                        constructor.params = [p for p in constructor.params if len(p) > 0]
+                        constructor.params = [
+                            p for p in constructor.params if len(p) > 0]
+                    elif subline.name.startswith("__op_") and\
+                    subline.name.endswith("__"):
+                        # pattern __op_.*__
+                        opname = subline.name[5:-2]
+                        op = Func(subline.name, subline, ctx)
+                        op.params.insert(0, [Var("this")])
+                        op.params = [
+                            p for p in op.params if len(p) > 0]
+                        ops[opname] = {'Value':op}
                     else:
                         fn = Func(subline.name, subline, ctx)
                         fn.params.insert(0, [Var("this")])
@@ -215,13 +230,17 @@ class Interpreter:
                 subs = [self.run_stmt(sub[0], ctx) for sub in line.subs]
             else:
                 subs = []
-            ctx[line.name] = Class(line.name, props, constructor, subs, ctx)
+            ctx[line.name] = Class(line.name, ops, props, constructor, subs, ctx)
         elif isinstance(line, Import):
+            modname = line.module_name.split("/")[-1]
             try:
-                modname = line.module_name.split("/")[-1]
-                ctx[modname] = run_file(line.module_name+".pr")
+                ctx[modname] = run_file(f"{line.module_name}.{config.fileext}")
             except ImportError:
-                ctx[line.module_name] = PyModule(line.module_name)
+                try:
+                    module = __import__(line.module_name)
+                    ctx[modname] = pytopr.make_importable(module)
+                except ModuleNotFoundError as e:
+                    raise ImportError("File not found") from e
         else:
             raise ProgramSyntaxError("No clue what this line is")
 
@@ -240,6 +259,9 @@ class Interpreter:
 
 loaded_files = {}
 
+# it's a stack. use the top (last) element
+active_interpreter = []
+
 def run_file(filepath:str):
 
     if filepath in loaded_files:
@@ -251,20 +273,31 @@ def run_file(filepath:str):
     try:
         with open(filepath) as file:
             text = file.read()
-        
-        tokens = l.tokenize(text)
-        macrofied = l.apply_macros(tokens)
-        i_tokens = p.parse(macrofied)
+
+        # if we've already parsed this, don't do it again
+        data = saveparsed.test_parsed(text, filepath)
+        if data is not None:
+            #print('using preparsed data')
+            i_tokens = data
+        else:
+            # parse the text
+            tokens = l.tokenize(text)
+            macrofied = l.apply_macros(tokens)
+            i_tokens = p.parse(macrofied)
+            saveparsed.save_parsed(text, i_tokens, filepath)
+
+        # run the program
         if config.DEBUG_MODE:
             print(40*"-")
             print(",\nthen ".join(str(l) for l in i_tokens))
             print(40*"-")
         try:
+            active_interpreter.append(i)
             i.run(i_tokens)
+            active_interpreter.pop()
         except KeyboardInterrupt:
             print("\nCtrl-C pressed, exiting...")
             sys.exit(0)
-
         
         module = Module(filepath.split(".")[0], i.globals)
         loaded_files[filepath] = module

@@ -63,7 +63,7 @@ b = Board(15, 15);
 print("Game Of Life");
 for i in (range(5)) {
     print(tostring(5-i)+"...");
-    sleep(1);
+    //sleep(1);
 }
 clear();
 print("Begin!");

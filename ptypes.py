@@ -1,45 +1,50 @@
 from errors import NotImplementedException
-import pyfunc
-
-# Need to detect classes that would be called 'getset_descriptor'
-dt = __import__('datetime')
-gsd = type(dt.datetime.day)
+import pyfunc, interpreter
 
 def to_val(pyval):
     if isinstance(pyval, Value):
         return pyval
+    elif isinstance(pyval, bool):
+        # apparently isinstance(True, int)
+        # returns True, so we need to check
+        # for bool first
+        return Bool(pyval)
     elif isinstance(pyval, int):
         return Int(pyval)
     elif isinstance(pyval, float):
         return Float(pyval)
-    elif isinstance(pyval, bool):
-        return Bool(pyval)
     elif isinstance(pyval, str):
         return String(pyval)
     elif isinstance(pyval, list):
         return Array([to_val(v) for v in pyval])
-    elif type(pyval) == type:
-        return pyfunc.PyClass(pyval.__name__, pyval)
-    elif callable(pyval):
-        static = "function" in type(pyval).__name__
-        return pyfunc.from_python(pyval, static=static)
-    elif isinstance(pyval, gsd):
-        def pv_getattr(inst):
-            return getattr(inst, pyval.__name__)
-        return pyfunc.from_python(pv_getattr, pyval.__name__)
+    elif isinstance(pyval, dict):
+        return Dict({to_val(k):to_val(v) for k,v in pyval.items()})
+    # elif type(pyval) == type:
+    #     return pyfunc.PyClass(pyval.__name__, pyval)
+    # elif callable(pyval):
+    #     static = "function" in type(pyval).__name__
+    #     return pyfunc.from_python(pyval, static=static)
+    # elif isinstance(pyval, gsd):
+    #     def pv_getattr(inst):
+    #         return getattr(inst, pyval.__name__)
+    #     return pyfunc.from_python(pv_getattr, pyval.__name__)
     elif pyval is None:
         return VNone(None)
-    else:
-        cls = to_val(type(pyval))
-        return cls.constructor(cl_inst=ClassInstance, existing_inst=pyval)
+    # else:
+    #     cls = to_val(type(pyval))
+    #     return cls.constructor(cl_inst=ClassInstance, existing_inst=pyval)
 
 def from_val(prval):
     if isinstance(prval, Array):
         return [from_val(p) for p in prval.val]
-    elif isinstance(prval, pyfunc.PyClass):
-        return prval.cls
-    elif isinstance(prval, pyfunc.PyModule):
-        return prval.module
+    # elif isinstance(prval, pyfunc.PyClass):
+    #     return prval.cls
+    # elif isinstance(prval, pyfunc.PyModule):
+    #     return prval.module
+    elif isinstance(prval, Func):
+        itpr = interpreter.active_interpreter[-1]
+        return lambda *args: itpr.run_fn_raw(
+            prval.func, [to_val(a) for a in args], itpr.globals)
     else:
         return prval.val
 
@@ -48,8 +53,14 @@ class Value:
         try:
             assert type(self.val) == type(val)
         except AssertionError as e:
-            raise ValueError(f"{type(val)} recieved when expected {type(self.val)}") from e
+            raise ValueError(
+                f"{type(val)} recieved when expected {type(self.val)}") from e
         self.val = val
+        if not isinstance(self, Func):
+            self.props.update({
+                'dir': pyfunc.from_python(
+                    lambda me: Dict(me.props), 'dir', convert_type=False)
+            })
     
     val=None
 
@@ -73,7 +84,13 @@ class Value:
             if self.op_allowed(subclass, op):
                 for t_str in self.ops[op].keys():
                     if subclass in t_str.split(","):
-                        return self.ops[op][t_str](self, other)
+                        if callable(self.ops[op][t_str]):
+                            return self.ops[op][t_str](self, other)
+                        else:
+                            fn = self.ops[op][t_str]
+                            return interpreter.active_interpreter[-1].run_fn_raw(
+                               fn.func, [self, other], fn.ctx
+                            )
         print(op)
         print(self, other)
         raise NotImplementedException(
@@ -183,7 +200,22 @@ class Int(Value):
         },
         "!=": {
             "Int,Float": lambda me, other: Bool(me.val!=other.val)
-        }
+        },
+        "&": {
+            "Int": lambda me, other: Int(me.val&other.val)
+        },
+        "|": {
+            "Int": lambda me, other: Int(me.val|other.val)
+        },
+        "^": {
+            "Int": lambda me, other: Int(me.val^other.val)
+        },
+        ">>": {
+            "Int": lambda me, other: Int(me.val>>other.val)
+        },
+        "<<": {
+            "Int": lambda me, other: Int(me.val<<other.val)
+        },
     }
 
     def __str__(self):
@@ -229,6 +261,10 @@ class Float(Value):
         }
     }
 
+    props = {
+        'round': pyfunc.from_python(lambda me: round(me), 'round')
+    }
+
     def __str__(self):
         return "F "+str(self.val)
     
@@ -248,7 +284,20 @@ class String(Value):
     }
 
     props = {
-        "length": lambda me: Int(len(me.val))
+        "length": pyfunc.from_python(
+            lambda me: len(me), 'length'),
+        "startswith": pyfunc.from_python(
+            lambda me, prefix: me.startswith(prefix), 'startswith'),
+        "endswith": pyfunc.from_python(
+            lambda me, suffix: me.endswith(suffix), 'endswith'),
+        "lower": pyfunc.from_python(
+            lambda me: me.lower(), 'lower'),
+        "upper": pyfunc.from_python(
+            lambda me: me.upper(), 'upper'),
+        "strip": pyfunc.from_python(
+            lambda me: me.strip(), 'strip'),
+        "split": pyfunc.from_python(
+            lambda me, sep: me.split(sep), 'split')
     }
 
     def __str__(self):
@@ -292,8 +341,18 @@ class Array(Value):
 
     props = {
         "length": lambda me: Int(len(me.val)),
-        "reversed": pyfunc.from_python(lambda self: Array(list(reversed(self.val))), "reversed"),
-        "reverse": pyfunc.from_python(lambda self: self.val.reverse(), "reverse")
+        "reversed": pyfunc.from_python(
+            lambda self: list(reversed(self)), "reversed"),
+        "reverse": pyfunc.from_python(lambda self: self.val.reverse(), "reverse"),
+        "map": pyfunc.from_python(
+            lambda self, func: [func(itm) for itm in self], "map"),
+        "ele": pyfunc.from_python(lambda self, idx: self[idx], "ele"),
+        "filter": pyfunc.from_python(
+            lambda self, func: [itm for itm in self if func(itm)], "filter"),
+        "has": pyfunc.from_python(lambda self, key: key in self, "has"),
+        "join": pyfunc.from_python(lambda me, joiner: joiner.join(me), 'join'),
+        "sort": pyfunc.from_python(lambda me: me.sort(), 'sort'),
+        "slice": pyfunc.from_python(lambda me, start, end: me[slice(start, end)])
     }
 
     def __str__(self):
@@ -301,6 +360,32 @@ class Array(Value):
 
     def out_str(self):
         return "["+", ".join(itm.out_str() for itm in self.val)+"]"
+
+def rm_key(d, key):
+    del d[key]
+
+class Dict(Value):
+    val = {}
+    ops = {}
+    
+    props = {
+        "length": pyfunc.from_python(lambda self: len(self), 'length'),
+        "ele": pyfunc.from_python(lambda self, idx: self[idx], "ele"),
+        "has": pyfunc.from_python(lambda self, key: key in self, "has"),
+        "hasval": pyfunc.from_python(
+            lambda self, val: val in self.values(), "hasval"),
+        "remove": pyfunc.from_python(rm_key, 'remove'),
+        "keys": pyfunc.from_python(lambda self: list(self.keys()), 'keys'),
+        "values": pyfunc.from_python(lambda self: list(self.values()), 'values'),
+        "items": pyfunc.from_python(
+            lambda self: [list(i) for i in self.items()], 'items'),
+    }
+
+    def __str__(self):
+        return '{'+', '.join(f"{k}: {v}" for k,v in self.val.items())+'}'
+
+    def out_str(self):
+        return '{'+', '.join(f"{k}: {v.out_str()}" for k,v in self.val.items())+'}'
 
 class Context(Value):
     val = ""
@@ -321,10 +406,10 @@ class Class(Value):
     ops = {}
     props = {}
 
-    def __init__(self, name, props, constructor, subs, ctx):
+    def __init__(self, cname, ops, props, constructor, subs, ctx):
         self.constructor = constructor
         if constructor is None:
-            self.constructor = pyfunc.from_python(lambda: ClassInstance(self), name, True)
+            self.constructor = pyfunc.from_python(lambda: ClassInstance(self), cname, True)
         self.ctx = Ctx(ctx)
         self.subs = subs
 
@@ -335,8 +420,11 @@ class Class(Value):
                     self.props[name] = prop
         for name, prop in props.items():
             self.props[name] = prop
+
+        for name, op in ops.items():
+            self.ops[name] = op
                 
-        super().__init__(name)
+        super().__init__(cname)
 
     def __str__(self):
         return f"class {self.val}"
@@ -350,21 +438,25 @@ class ClassInstance(Value):
     def __init__(self, class_: Class):
         super().__init__(class_.val)
         self.class_ = class_
-        self.props = class_.props
+        self.props = Ctx(class_.props)
+        self.ops = class_.ops
 
-    @property
-    def is_builtin(self):
-        # if props isn't a dict, it's that mapping of
-        # an object's properties from pyfunc, so it's
-        # builtin
-        return type(self.props) != dict
+    # Some code that was used during the testing phase
+    # for the python imports. I don't need it anymore,
+    # since I'm not doing that. Too frustrating.
+    # @property
+    # def is_builtin(self):
+    #     # if props isn't a dict, it's that mapping of
+    #     # an object's properties from pyfunc, so it's
+    #     # builtin
+    #     return type(self.props) != dict
 
     def __str__(self):
-        input(self.class_)
-        if self.is_builtin:
-            return "pyci of "+str(self.props.inst)
-        else:
-            return f"        instance {self.val}"
+        # if self.is_builtin:
+        #     return "pyci of "+str(self.props.inst)
+        # else:
+        props = {k:v.out_str() for k,v in self.props.items()}
+        return f"classinst {self.val} with props {props}"
     
     def out_str(self):
         return str(self)

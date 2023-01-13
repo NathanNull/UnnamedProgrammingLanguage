@@ -1,19 +1,12 @@
-#importdefs macros
+import 'ptime';
+import 'pjson';
 
-#define j 3
-//#undef j
+d = dictionary([['h', 'e'], ['l', 'l'], ['o', '.']]);
+js = pjson.dumps(d);
+print(js);
+print(pjson.loads('[1,2,3]').reversed());
 
-#define_multi whee
-print(1354);
-print(1354);
-print(1354);
-print(1354)
-#
-#funcdef_multi jj() :: whee
-
-
-#ifdef j
-print(aaa(1,2,3,4));
-#
-
-jj();
+while (true) {
+    print(ptime.asctime(ptime.localtime()));
+    sleep(7);
+}

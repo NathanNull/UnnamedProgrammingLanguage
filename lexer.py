@@ -3,9 +3,10 @@ from ptoken import Word, Operator, Bracket,\
     ArgSep, HashDef, DoubleColon
 from errors import InvalidOperator, ProgramSyntaxError
 from random import randint
+import config
 
 class Lexer:
-    ops = "+-*/=<>&|.!"
+    ops = "+-*/=<>^&|.!"
 
     # Weird list comprehensiony thingy to create, for instance, + and += as legal ops.
     legal_ops = [itm for t in [
@@ -13,7 +14,8 @@ class Lexer:
         "<",">","<=",">=",
         "==","!=","&&","||",
         ".",
-        "" # so = will be added
+        "", # so = will be added
+        "|", "&", "^", "<<", ">>"
     ] for itm in (t, t+"=")]
 
     # Plus some unary-only ops
@@ -158,7 +160,7 @@ class Lexer:
                     defs[line[2].word] = line[3:]
                 elif line[1].word == 'importdefs':
                     filename = ''.join(str(t) for t in line[2:])
-                    with open(filename+'.prm') as macrofile:
+                    with open(f'{filename}.{config.fileext}m') as macrofile:
                         lines = self.tokenize(macrofile.read())
                     extra, macros = self.apply_macros(lines, True)
                     for name, rep in macros.items():

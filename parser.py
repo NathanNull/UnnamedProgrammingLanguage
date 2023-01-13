@@ -94,6 +94,8 @@ class Parser:
             elif isinstance(token, Section):
                 token.inner_tokens = self.parse_words(token.inner_tokens, depth+1)
                 new_token = token
+            elif isinstance(token, Operator) and lit_tokens and isinstance(lit_tokens[-1], Keyword) and lit_tokens[-1].kw == "func":
+                new_token = Var(f'__op_{token.op}__')
             else:
                 new_token = token
 
@@ -105,12 +107,13 @@ class Parser:
         # Order should mimic this:
         # https://learn.microsoft.com/en-us/cpp/c-language/precedence-and-order-of-evaluation?view=msvc-170
         ops = [
-            ["."],
             ["!"],
             ["*", "/"],
             ["+", "-"],
+            ["<<", ">>"],
             [">","<","<=",">="],
             ["==", "!="],
+            ["&"], ["^"], ["|"],
             ["&&"], ["||"]
         ]
         for op in ops:
@@ -132,12 +135,8 @@ class Parser:
                     if state_stack:
                         assert not isinstance(op_tokens[-1], UnaryOperator)
                     lhs = op_tokens.pop()
-                    if token.op == ".":
-                        new_token = GetProperty(lhs, None)
-                        new_state = "get_propname"
-                    else:
-                        new_token = BinaryOperator(lhs, token.op, None)
-                        new_state = "get_rhs"
+                    new_token = BinaryOperator(lhs, token.op, None)
+                    new_state = "get_rhs"
                 except (IndexError, AssertionError): #pop from empty list
                     state_stack.append(state)
                     state = "normal"
@@ -174,12 +173,6 @@ class Parser:
                             op_tkn.inner_tokens, op, depth+1
                         )
                 new_token = token
-            # elif isinstance(token, BinaryOperator):
-            #     if isinstance(token.target, Section):
-            #         op_tkn.inner_tokens = self.parse_op_grp(
-            #             op_tkn.inner_tokens, op, depth+1
-            #         )
-            #     new_token = token
             else:
                 new_token = token
 
@@ -197,25 +190,6 @@ class Parser:
                     state = state_stack.pop()
                     new_token = op_tokens.pop()
                     continue
-                elif state == "get_propname":
-                    if isinstance(new_token, Var):
-                        op_tokens[-1].prop = new_token.name
-                    elif isinstance(new_token, FuncCall):
-                        o = op_tokens.pop()
-                        n = new_token
-                        op_tokens.append(FuncCall(o.target, n.fname, n.params))
-                    elif isinstance(new_token, ArrIdx):
-                        def alter(new, otk):
-                            if isinstance(new.var, ArrIdx):
-                                alter(new.var, otk)
-                            else:
-                                otk.prop = new.var.name
-                                new.var = otk
-                        o = op_tokens.pop()
-                        alter(new_token, o)
-                        op_tokens.append(new_token)
-                    else:
-                        raise AttributeError(f"Need name for . operator, not {new_token}")
                 break
             state = new_state
         return op_tokens
@@ -353,24 +327,26 @@ class Parser:
         and isinstance(line[0], Keyword):
             if line[0].kw == "return":
                 return Return(line[1])
-            elif line[0].kw == "import"\
-            and isinstance(line[1], String):
-                return Import(line[1].val)
+            elif line[0].kw == "import":
+                if isinstance(line[1], String):
+                    return Import(line[1].val)
+                else:
+                    raise ProgramSyntaxError("need string for import")
         else:
             print([(str(t), type(t)) for t in line])
             raise ProgramSyntaxError("No clue what this line is")
 
     def parse_fns(self, tokens, depth=0):
-        func_call = []
+        new_tokens = []
         for tk in tokens:
             if isinstance(tk, Section):
-                tk.inner_tokens = self.parse_fns(tk.inner_tokens, depth+1)
-                tk.inner_tokens = self.parse_ops(tk.inner_tokens)
+                tki = self.parse_fns(tk.inner_tokens, depth+1)
+                tk.inner_tokens = self.parse_ops(tki)
             elif isinstance(tk, ArrIdx):
                 def arr_fns(t):
                     newvals = []
                     for stmt in t.idx_stmt.vals:
-                        nv = self.parse_fns(stmt, depth+1)
+                        nv = self.parse_fns([stmt], depth+1)
                         nv = self.parse_ops(nv)[0]
                         newvals.append(nv)
                     t.idx_stmt.vals = newvals
@@ -381,31 +357,41 @@ class Parser:
                 isinstance(tk, Tuple) 
                 or (isinstance(tk, Section) and len(tk.inner_tokens)<=1)
             )\
-            and len(func_call)>0\
-            and isinstance(func_call[-1], Var):
+            and len(new_tokens)>0\
+            and any(isinstance(new_tokens[-1], t) for t in (Var, GetProperty)):
+                # make a function
                 params = tk
                 if isinstance(tk, Section):
                     params = Tuple([tk.inner_tokens])
-                func_call.append(FuncCall(None, func_call.pop().name, params))
+                params.vals = [self.parse_fns(p) for p in params.vals]
+                func = new_tokens.pop()
+                if isinstance(func, GetProperty):
+                    target = func.target
+                    name = func.prop
+                else:
+                    target = None
+                    name = func.name
+                new_tokens.append(FuncCall(target, name, params))
+            elif isinstance(tk, ArrayLiteral)\
+            and len(new_tokens)>0\
+            and not isinstance(new_tokens[-1], Operator):
+                # make an arridx (arr could be a GetProperty but it doesn't matter)
+                arr = new_tokens.pop()
+                aix = ArrIdx(arr, ArrayLiteral([t[0] for t in tk.vals]))
+                new_tokens.append(aix)
             else:
-                func_call.append(tk)
-        return func_call
-
-    def parse_arridx(self, tokens):
-        arr_idx = []
-        for i, tk in enumerate(tokens):
-            if isinstance(tk, ArrayLiteral)\
-            and len(arr_idx)>0\
-            and not isinstance(arr_idx[-1], Operator):
-                arr = arr_idx.pop()
-                arr_idx.append(ArrIdx(arr, tk))
-            elif isinstance(tk, Section):
-                arr_idx.append(Section(self.parse_arridx(tk.inner_tokens)))
-            elif isinstance(tk, Tuple):
-                arr_idx.append(Tuple([self.parse_arridx(t) for t in tk.vals]))
-            else:
-                arr_idx.append(tk)
-        return arr_idx
+                new_tokens.append(tk)
+            try:
+                dot = new_tokens[-2]
+                if isinstance(dot, Operator) and dot.op == ".":
+                    target = new_tokens[-3]
+                    get = new_tokens[-1]
+                    for _ in range(3):
+                        new_tokens.pop()
+                    new_tokens.append(GetProperty(target, get.name))
+            except:
+                pass
+        return new_tokens
 
     def parse_line(self, line, prev):
         if isinstance(line, MultilineSection):
@@ -423,8 +409,8 @@ class Parser:
             prev.section = line
             return None, None
         bracketed = self.pair_brackets(line, 0).inner_tokens
-        arr_idx = self.parse_arridx(bracketed)
-        func_call = self.parse_fns(arr_idx)
+        #arr_idx = self.parse_arridx(bracketed)
+        func_call = self.parse_fns(bracketed)
         op_tokens = self.parse_ops(func_call)
         stmt_line = self.detect_stmt_type(op_tokens, prev)
         if isinstance(prev, AcceptsSection):
